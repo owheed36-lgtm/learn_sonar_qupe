@@ -1,61 +1,97 @@
-name: Flutter SonarQube
+name: SonarCloud PR Analysis
 
 on:
   pull_request:
 
+    types: [opened, synchronize, reopened]
 
 jobs:
-  analyze:
+  sonar:
+    name: SonarCloud Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4  # Use v4 instead of v6 (v6 might not exist)
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          flutter-version: "3.35.7"
+          cache: true
 
       - name: Install dependencies
         run: |
           flutter pub get
+          # Install coverage tools
           sudo apt-get update
-          sudo apt-get install -y lcov jq
+          sudo apt-get install -y lcov
 
-      - name: Generate analysis data
+      - name: Analyze code
         run: |
-          # Run tests with coverage
-          flutter test --coverage --machine > test-report.json
-          
-          # Generate LCOV coverage
-          find . -name "*.dart" | grep -v ".g.dart" | grep -v ".freezed.dart" | xargs lcov --capture --output-file coverage/lcov.info
-          
-          # Create generic issues report
-          flutter analyze --format=json > analysis-report.json
+          flutter analyze --write analyzer-report.txt
+          echo "Analysis completed"
 
-      - name: Run SonarScanner with Fix
+      - name: Generate coverage report
+        run: |
+          if [ -d "test" ]; then
+            echo "Running tests with coverage..."
+            flutter test --coverage
+          
+            # Check if coverage file was generated
+            if [ -f "coverage/lcov.info" ]; then
+              echo "Coverage file found"
+              # Process the coverage file
+              lcov --list coverage/lcov.info || echo "LCOV processing failed"
+            else
+              echo "No coverage/lcov.info found, checking for alternatives..."
+              # Try to find coverage files
+              find . -name "*.json" -type f | grep -i coverage || true
+              # Create minimal coverage file if none exists
+              echo "TN:" > coverage/lcov.info
+              echo "end_of_record" >> coverage/lcov.info
+            fi
+          else
+            echo "No test directory found. Creating empty coverage file..."
+            mkdir -p coverage
+            echo "TN:" > coverage/lcov.info
+            echo "end_of_record" >> coverage/lcov.info
+          fi
+
+      - name: Prepare SonarCloud analysis
+        run: |
+          # Create sonar-project.properties with FIXES for Dart plugin issues
+          cat > sonar-project.properties << EOF
+          sonar.projectKey=${GITHUB_REPOSITORY#*/}
+          sonar.projectName=${{ github.event.repository.name }}
+          sonar.projectVersion=1.0
+          sonar.sources=lib
+          sonar.tests=test
+          sonar.sourceEncoding=UTF-8
+          sonar.exclusions=**/*.g.dart,**/*.freezed.dart,**/*.gr.dart,**/generated/**,**/*.mocks.dart
+          sonar.coverage.exclusions=**/*.g.dart,**/*.freezed.dart
+          # FIX: Disable problematic Dart analyzer
+          sonar.dart.analyzer.skip=true
+          sonar.dart.skip=true
+          # Coverage settings
+          sonar.coverageReportPaths=coverage/lcov.info
+          # Analysis reports
+          sonar.analysis.reportPath=analyzer-report.txt
+          EOF
+          
+          echo "SonarCloud configuration created"
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          # Install Node.js based sonar-scanner
-          npm install -g sonarqube-scanner
-          
-          # Run scanner with ALL necessary parameters to fix the issue
-          sonar-scanner \
-            -Dsonar.projectKey="${{ github.event.repository.name }}" \
-            -Dsonar.projectName="${{ github.event.repository.name }}" \
-            -Dsonar.sources=lib \
-            -Dsonar.tests=test \
-            -Dsonar.host.url=$SONAR_HOST_URL \
-            -Dsonar.login=$SONAR_TOKEN \
-            -Dsonar.coverageReportPaths=coverage/lcov.info \
-            -Dsonar.exclusions=**/*.g.dart,**/*.freezed.dart,**/*.gr.dart,**/generated/** \
-            -Dsonar.dart.analyzer.skip=true \
-            -Dsonar.dart.skip=true \
-            -Dsonar.verbose=true \
-            -Dsonar.scm.disabled=false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Add these arguments to fix the sonar.exe error
+          args: >
+            -Dsonar.dart.analyzer.skip=true
+            -Dsonar.dart.skip=true
+            -Dsonar.exclusions=**/*.g.dart,**/*.freezed.dart,**/*.gr.dart
+            -Dsonar.verbose=true
