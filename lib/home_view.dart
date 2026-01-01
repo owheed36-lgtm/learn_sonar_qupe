@@ -7,7 +7,16 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: Text("Flutter")),
+      body: Column(
+        children: [
+          Center(child: Text("Flutter")),
+          Center(child: Text("Flutter")),
+          Center(child: Text("Flutter")),
+          Center(child: Text("Flutter")),
+          Center(child: Text("Flutter")),
+          Center(child: Text("Flutter")),
+        ],
+      ),
     );
   }
 }
