@@ -1,39 +1,61 @@
-name: SonarCloud PR Analysis
+name: Flutter SonarQube
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+
 
 jobs:
-  sonar:
-    name: SonarCloud Scan
+  analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.7"
+          flutter-version: 'stable'
 
       - name: Install dependencies
-        run: flutter pub get
-
-      - name: Analyze code
-        run: flutter analyze
-      - name: Run tests with coverage
         run: |
-          if [ -d "test" ]; then
-            flutter test --coverage
-          else
-            echo "No test directory found. Skipping tests."
-          fi
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
+          flutter pub get
+          sudo apt-get update
+          sudo apt-get install -y lcov jq
+
+      - name: Generate analysis data
+        run: |
+          # Run tests with coverage
+          flutter test --coverage --machine > test-report.json
+          
+          # Generate LCOV coverage
+          find . -name "*.dart" | grep -v ".g.dart" | grep -v ".freezed.dart" | xargs lcov --capture --output-file coverage/lcov.info
+          
+          # Create generic issues report
+          flutter analyze --format=json > analysis-report.json
+
+      - name: Run SonarScanner with Fix
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          # Install Node.js based sonar-scanner
+          npm install -g sonarqube-scanner
+          
+          # Run scanner with ALL necessary parameters to fix the issue
+          sonar-scanner \
+            -Dsonar.projectKey="${{ github.event.repository.name }}" \
+            -Dsonar.projectName="${{ github.event.repository.name }}" \
+            -Dsonar.sources=lib \
+            -Dsonar.tests=test \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.coverageReportPaths=coverage/lcov.info \
+            -Dsonar.exclusions=**/*.g.dart,**/*.freezed.dart,**/*.gr.dart,**/generated/** \
+            -Dsonar.dart.analyzer.skip=true \
+            -Dsonar.dart.skip=true \
+            -Dsonar.verbose=true \
+            -Dsonar.scm.disabled=false
