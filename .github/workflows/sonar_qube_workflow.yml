@@ -25,11 +25,15 @@ jobs:
 
       - name: Analyze code
         run: flutter analyze
-
       - name: Run tests with coverage
-        run: flutter test --coverage
-
+        run: |
+          if [ -d "test" ]; then
+            flutter test --coverage
+          else
+            echo "No test directory found. Skipping tests."
+          fi
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
