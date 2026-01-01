@@ -2,7 +2,6 @@ name: SonarCloud PR Analysis
 
 on:
   pull_request:
-
     types: [opened, synchronize, reopened]
 
 jobs:
@@ -12,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -22,31 +21,20 @@ jobs:
           flutter-version: "3.35.7"
 
       - name: Install dependencies
-        run: |
-          flutter pub get
-          sudo apt-get update && sudo apt-get install -y lcov
+        run: flutter pub get
 
-      - name: Generate coverage
+      - name: Analyze code
+        run: flutter analyze
+      - name: Run tests with coverage
         run: |
-          mkdir -p coverage
           if [ -d "test" ]; then
-            flutter test --coverage || true
-          fi
-          # Create coverage file if it doesn't exist
-          if [ ! -f "coverage/lcov.info" ]; then
-            echo "TN:" > coverage/lcov.info
-            echo "end_of_record" >> coverage/lcov.info
-          fi
+            flutter test --coverage
+          else
+            echo "No test directory found. Skipping tests."
+          fi  
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          # ADD THESE REQUIRED PARAMETERS:
-          args: >
-            -Dsonar.organization=YOUR_SONARCLOUD_ORGANIZATION_KEY
-            -Dsonar.projectKey=YOUR_SONARCLOUD_PROJECT_KEY
-            -Dsonar.dart.analyzer.skip=true
-            -Dsonar.dart.skip=true
+
