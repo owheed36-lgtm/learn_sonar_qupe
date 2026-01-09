@@ -2,12 +2,10 @@ name: Notifier
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-
+    types: [opened, synchronize, reopened, closed, ready_for_review]
 
 jobs:
-
   messageSlack:
     runs-on: ubuntu-latest
     steps:
@@ -15,7 +13,18 @@ jobs:
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_CHANNEL: test_channel
-          SLACK_TITLE: PR Open
           SLACK_USERNAME: BotCI
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_MESSAGE: "This is your custom message."
+          SLACK_COLOR: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged && 'good' || github.event_name == 'pull_request' && 'warning' || '#0366d6' }}
+          SLACK_ICON_EMOJI: ':github:'
+          SLACK_TITLE: ${{ github.event_name == 'pull_request' && format('PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title) || format('Push to {0}', github.ref_name) }}
+          SLACK_MESSAGE: |
+            *Author:* @${{ github.event_name == 'pull_request' && github.event.pull_request.user.login || github.actor }}
+            *Action:* ${{ github.event_name == 'pull_request' && github.event.action || 'pushed' }}
+            *Branch:* ${{ github.event_name == 'pull_request' && format('`{0}` → `{1}`', github.event.pull_request.head.ref, github.event.pull_request.base.ref) || format('`{0}`', github.ref_name) }}
+            *Reviewers:* ${{ github.event_name == 'pull_request' && (join(github.event.pull_request.requested_reviewers.*.login, ', ') || 'owheed36-lgtm') || 'N/A' }}
+            *Commit:* `${{ github.event_name == 'pull_request' && substring(github.event.pull_request.head.sha, 0, 7) || substring(github.sha, 0, 7) }}`
+            
+            ${{ github.event_name == 'pull_request' && format('<{0}|View Pull Request>', github.event.pull_request.html_url) || format('<{0}/commit/{1}|View Commit>', github.event.repository.html_url, github.sha) }}
+          SLACK_FOOTER: 'Powered by rtCamp | Triggered by @${{ github.actor }}'
+
