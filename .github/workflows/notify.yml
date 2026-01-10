@@ -1,26 +1,135 @@
 name: Notifier
 
 on:
+  pull_request:
+    types: [opened, reopened, synchronize]
   push:
     branches: [ main ]
-  pull_request:
-
 
 jobs:
-
-  messageSlack:
+  slackNotify:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Notification Slack
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Slack Notification (Advanced)
         uses: rtCamp/action-slack-notify@v2
         env:
-          SLACK_CHANNEL: test_channel
-          SLACK_TITLE: PR Open
-          SLACK_USERNAME: BotCI
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_CHANNEL: test_channel
+          SLACK_USERNAME: CI-Bot
+          SLACK_ICON_EMOJI: ":satellite:"
+
           SLACK_MESSAGE: |
-            *Author:* @${{ github.event_name == 'pull_request' && github.event.pull_request.user.login || github.actor }}
-            *Action:* ${{ github.event_name == 'pull_request' && github.event.action || 'pushed' }}
-            *Branch:* ${{ github.event_name == 'pull_request' && format('`{0}` → `{1}`', github.event.pull_request.head.ref, github.event.pull_request.base.ref) || format('`{0}`', github.ref_name) }}
-            *Reviewers:* ${{ github.event_name == 'pull_request' && join(github.event.pull_request.requested_reviewers.*.login, ', ') || 'owheed36-lgtm' }}
-            *Commit:* `${{ steps.sha.outputs.short }}`
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ github.event_name == 'pull_request' && '🚀 Pull Request Activity' || '📦 Push to Main Branch' }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*👤 Author*\n`${{ github.event_name == 'pull_request' && github.event.pull_request.user.login || github.actor }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*📝 Action*\n`${{ github.event_name == 'pull_request' && github.event.action || 'push' }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*📦 Repository*\n`${{ github.repository }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*🧩 Commit*\n`${{ steps.sha.outputs.short }}`"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🌿 Branch*\n${{ github.event_name == 'pull_request'
+                      && format('`{0}` → `{1}`', github.event.pull_request.head.ref, github.event.pull_request.base.ref)
+                      || format('`{0}`', github.ref_name) }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🧾 Title*\n${{ github.event_name == 'pull_request'
+                      && github.event.pull_request.title
+                      || 'Direct push to main' }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*🔢 Commits*\n${{ github.event_name == 'pull_request'
+                        && github.event.pull_request.commits
+                        || '1+' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*🏷️ Labels*\n${{ github.event_name == 'pull_request'
+                        && join(github.event.pull_request.labels.*.name, ', ')
+                        || '—' }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*👥 Reviewers*\n${{ github.event_name == 'pull_request'
+                        && join(github.event.pull_request.requested_reviewers.*.login, ', ')
+                        || '—' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*👤 Assignees*\n${{ github.event_name == 'pull_request'
+                        && join(github.event.pull_request.assignees.*.login, ', ')
+                        || '—' }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "🔍 View Details"
+                      },
+                      "url": "${{ github.event_name == 'pull_request'
+                        && github.event.pull_request.html_url
+                        || format('https://github.com/{0}/commit/{1}', github.repository, github.sha) }}",
+                      "style": "primary"
+                    }
+                  ]
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "⚙️ Generated by GitHub Actions • CI Notification"
+                    }
+                  ]
+                }
+              ]
+            }
