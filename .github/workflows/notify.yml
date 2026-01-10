@@ -1,20 +1,15 @@
-name: Notifier
+name: New Notification
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    types: [opened, reopened, synchronize]
-
 jobs:
   messageSlack:
     runs-on: ubuntu-latest
-
     steps:
       - name: Get short SHA
         id: sha
         run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
       - name: Slack Notification
         uses: rtCamp/action-slack-notify@v2
         env:
@@ -24,42 +19,23 @@ jobs:
           SLACK_TITLE: >
             ${{ github.event_name == 'pull_request' && '🚀 New Pull Request' || '📦 New Push to Main' }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-
           SLACK_MESSAGE: |
             *👤 Author:* `${{ github.event_name == 'pull_request' && github.event.pull_request.user.login || github.actor }}`
-
             *📝 Action:* `${{ github.event_name == 'pull_request' && github.event.action || 'push' }}`
-
             *📦 Repository:* `${{ github.repository }}`
-
             *🌿 Branch:*
             ${{ github.event_name == 'pull_request'
               && format('`{0}` → `{1}`', github.event.pull_request.head.ref, github.event.pull_request.base.ref)
               || format('`{0}`', github.ref_name) }}
-
             *🧾 Title:*
             ${{ github.event_name == 'pull_request'
               && github.event.pull_request.title
               || 'Direct push to main' }}
-
             *🔢 Commits:*
             ${{ github.event_name == 'pull_request'
               && github.event.pull_request.commits
               || '1+' }}
-
-            *🏷️ Labels:*
-            ${{ github.event_name == 'pull_request'
-              && join(github.event.pull_request.labels.*.name, ', ')
-              || '—' }}
-
-            *👥 Reviewers:*
-            ${{ github.event_name == 'pull_request'
-              && join(github.event.pull_request.requested_reviewers.*.login, ', ')
-              || '—' }}
-
             *🔗 Link:*
             ${{ github.event_name == 'pull_request'
               && github.event.pull_request.html_url
               || format('https://github.com/{0}/commit/{1}', github.repository, github.sha) }}
-
-            *🧩 Commit SHA:* `${{ steps.sha.outputs.short }}`
