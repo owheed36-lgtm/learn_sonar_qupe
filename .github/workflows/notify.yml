@@ -2,7 +2,7 @@ name: Simplified Enhanced Notification
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ development, master ]
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
@@ -22,7 +22,7 @@ jobs:
                 github.event_name == 'pull_request' && github.event.action == 'closed' && 'danger' ||
                 'warning' }}
           SLACK_TITLE: |
-            ${{ github.event_name == 'pull_request' && format('{0} PR: {1}', 
+            <!channel> ${{ github.event_name == 'pull_request' && format('{0} PR: {1}', 
                 github.event.action == 'opened' && '📝 New' ||
                 github.event.action == 'closed' && github.event.pull_request.merged && '✅ Merged' ||
                 github.event.action == 'closed' && '❌ Closed' ||
