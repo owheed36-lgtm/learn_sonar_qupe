@@ -1,147 +1,50 @@
-name: Enhanced Notification
+name: Simplified Enhanced Notification
 
 on:
   push:
-    branches: [ development, master ]
+    branches: [ main, master ]
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
 jobs:
-  messageSlack:
+  slack-notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get commit information
-        id: commits
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "commit_count=${{ github.event.pull_request.commits }}" >> $GITHUB_OUTPUT
-          else
-            COMMIT_COUNT=$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo "1")
-            echo "commit_count=${COMMIT_COUNT}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Extract commit messages
-        id: commit_messages
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # For PRs, we can get the commits via API or from the event
-            echo "messages=${{ toJSON(github.event.pull_request.commits.*.message) }}" >> $GITHUB_OUTPUT
-          else
-            # For pushes, get recent commits
-            MESSAGES=$(git log --oneline -3 --pretty=format:"• %s" | sed 's/"/\\"/g')
-            echo "messages=${MESSAGES}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Generate status emoji
-        id: status
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ "${{ github.event.action }}" = "opened" ]; then
-              STATUS="📝"
-            elif [ "${{ github.event.action }}" = "closed" ]; then
-              if [ "${{ github.event.pull_request.merged }}" = "true" ]; then
-                STATUS="✅"
-              else
-                STATUS="❌"
-              fi
-            else
-              STATUS="🔄"
-            fi
-          else
-            STATUS="🚀"
-          fi
-          echo "emoji=${STATUS}" >> $GITHUB_OUTPUT
-
-      - name: Format notification message
-        id: format_message
-        run: |
-          # Create a more detailed message with sections
-          MESSAGE=""
-          
-          # Header based on event type
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ "${{ github.event.action }}" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
-              MESSAGE+="*🎉 Pull Request Merged!*\\n"
-            elif [ "${{ github.event.action }}" = "closed" ]; then
-              MESSAGE+="*❌ Pull Request Closed*\\n"
-            else
-              MESSAGE+="*📝 New Pull Request*\\n"
-            fi
-          else
-            MESSAGE+="*🚀 New Code Pushed*\\n"
-          fi
-          MESSAGE+="\\n"
-          
-          # Repository and branch info
-          MESSAGE+="*📦 Repository:* `${{ github.repository }}`\\n"
-          
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MESSAGE+="*🌿 Branch:* `${{ github.event.pull_request.head.ref }}` → `${{ github.event.pull_request.base.ref }}`\\n"
-            MESSAGE+="*📄 PR Title:* ${{ github.event.pull_request.title }}\\n"
-            if [ "${{ github.event.pull_request.body }}" != "" ]; then
-              PR_BODY=$(echo "${{ github.event.pull_request.body }}" | head -c 100)
-              MESSAGE+="*📋 PR Description:* ${PR_BODY}...\\n"
-            fi
-          else
-            MESSAGE+="*🌿 Branch:* `${{ github.ref_name }}`\\n"
-          fi
-          
-          MESSAGE+="\\n"
-          
-          # Author info
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MESSAGE+="*👤 Author:* ${{ github.event.pull_request.user.login }}\\n"
-          else
-            MESSAGE+="*👤 Author:* ${{ github.actor }}\\n"
-          fi
-          
-          # Commit info
-          MESSAGE+="*🔢 Commits:* ${{ steps.commits.outputs.commit_count }}\\n"
-          MESSAGE+="\\n"
-          
-          # Recent commit messages
-          MESSAGE+="*📝 Recent Changes:*\\n"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # For PRs, show first few commit messages
-            MESSAGE+="${{ steps.commit_messages.outputs.messages || 'No commit messages available' }}\\n"
-          else
-            MESSAGE+="${{ steps.commit_messages.outputs.messages }}\\n"
-          fi
-          
-          MESSAGE+="\\n"
-          
-          # Links
-          MESSAGE+="*🔗 Links:*\\n"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MESSAGE+="• <${{ github.event.pull_request.html_url }}|View Pull Request>\\n"
-            MESSAGE+="• <https://github.com/${{ github.repository }}/compare/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.ref }}|View Changes>\\n"
-          else
-            MESSAGE+="• <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|View Commit>\\n"
-            MESSAGE+="• <https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}|View Branch>\\n"
-          fi
-          
-          # Store in output
-          echo "message=${MESSAGE}" >> $GITHUB_OUTPUT
-
       - name: Slack Notification
         uses: rtCamp/action-slack-notify@v2
         env:
           SLACK_CHANNEL: test_channel
           SLACK_USERNAME: CI-Bot 🤖
           SLACK_ICON_EMOJI: ":rocket:"
-          SLACK_TITLE: |
-            ${{ steps.status.outputs.emoji }} ${{ github.event_name == 'pull_request' && github.event.pull_request.title || 'Code Update' }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_MESSAGE: ${{ steps.format_message.outputs.message }}
           SLACK_COLOR: |
             ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == 'true' && 'good' || 
                 github.event_name == 'pull_request' && github.event.action == 'closed' && 'danger' ||
                 'warning' }}
+          SLACK_TITLE: |
+            ${{ github.event_name == 'pull_request' && format('{0} PR: {1}', 
+                github.event.action == 'opened' && '📝 New' ||
+                github.event.action == 'closed' && github.event.pull_request.merged && '✅ Merged' ||
+                github.event.action == 'closed' && '❌ Closed' ||
+                github.event.action == 'reopened' && '🔄 Reopened' ||
+                github.event.action == 'synchronize' && '🔄 Updated' ||
+                '📝', github.event.pull_request.title) || 
+                '🚀 Code Pushed' }}
+          SLACK_MESSAGE: |
+            *📦 Repository:* `${{ github.repository }}`
+            
+            ${{ github.event_name == 'pull_request' && format('*🌿 Branch:* `{0}` → `{1}`', github.event.pull_request.head.ref, github.event.pull_request.base.ref) || format('*🌿 Branch:* `{0}`', github.ref_name) }}
+            
+            ${{ github.event_name == 'pull_request' && format('*👤 Author:* {0}', github.event.pull_request.user.login) || format('*👤 Author:* {0}', github.actor) }}
+            
+            ${{ github.event_name == 'pull_request' && format('*📄 PR Title:* {0}', github.event.pull_request.title) }}
+            
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.body && format('*📋 Description:* {0}', github.event.pull_request.body) || '' }}
+            
+            *🔗 Links:*
+            ${{ github.event_name == 'pull_request' && format('• <{0}|View Pull Request>', github.event.pull_request.html_url) || format('• <https://github.com/{0}/commit/{1}|View Commit>', github.repository, github.sha) }}
+            ${{ github.event_name == 'pull_request' && format('• <https://github.com/{0}/compare/{1}...{2}|View Changes>', github.repository, github.event.pull_request.base.ref, github.event.pull_request.head.ref) || format('• <https://github.com/{0}/tree/{1}|View Branch>', github.repository, github.ref_name) }}
+            • <https://github.com/${{ github.repository }}|Repository Home>
+            
+            _Triggered by ${{ github.actor }}_
           MSG_MINIMAL: false
-          SLACK_FOOTER: |
-            Triggered by ${{ github.actor }} • ${{ github.event.repository.updated_at || github.event.pull_request.updated_at }}
